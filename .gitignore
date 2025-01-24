@@ -5,6 +5,7 @@
 *.sw[po]
 *~
 
+out
 /obj
 /bin
 /mrustc.depend

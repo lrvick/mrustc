@@ -146,6 +146,40 @@ clean:
 	$(RM) -rf -- $(BIN) $(OBJ) bin/mrustc.a
 
 
+.PHONY: oci-build
+oci-build: out/oci-build/.loaded
+	docker run \
+		--interactive \
+		--tty \
+		--workdir /home/user \
+		--volume $(PWD):/home/user \
+		$(shell cat out/oci-build/.loaded) \
+		build-mrustc
+
+.PHONY: oci-shell
+oci-shell: out/oci-build/.loaded
+	docker run \
+		--interactive \
+		--tty \
+		--workdir /home/user \
+		--volume $(PWD):/home/user \
+		$(shell cat out/oci-build/.loaded)
+
+out/oci-build/.loaded: out/oci-build/index.json
+	env -C out/oci-build tar -cf - . | docker load
+	jq -r '.manifests[].digest | sub ("sha256:";"")' \
+		out/oci-build/index.json \
+		| sed 's/\(.*\)/local\/oci-build@sha256:\1/g' \
+		> $@
+
+out/oci-build/index.json: Containerfile
+	docker build \
+		--progress=plain \
+		--tag local/oci-build \
+		--output type=oci,rewrite-timestamp=true,tar=false,dest=out/oci-build \
+		-f Containerfile \
+		.
+
 #
 # Defer to minicargo.mk for some common operations
 #
