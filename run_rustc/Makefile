@@ -35,6 +35,10 @@ ifeq ($(shell uname -s || echo not),Darwin)
   DYLIB_EXT := dylib
   PLATFORM := macos
   RUSTC_TARGET ?= x86_64-apple-darwin
+else ifeq ($(shell ldd ../bin/minicargo | grep -q musl && echo -n "yes"),yes)
+  DYLIB_EXT := so
+  PLATFORM := linux
+  RUSTC_TARGET ?= x86_64-unknown-linux-musl
 else
   DYLIB_EXT := so
   PLATFORM := linux
@@ -110,7 +114,9 @@ CARGO_FLAGS := --target $(RUSTC_TARGET) -j $(PARLEVEL) --release --verbose
 CARGO_ENV := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 CARGO_ENV += RUSTC_BOOTSTRAP=1
 CARGO_ENV += CARGO_HOME=$(CARGO_HOME)
-CARGO_ENV += RUSTFLAGS="-Z force-unstable-if-unmarked -C link_args=-Wl,-rpath,\$$ORIGIN/../lib"
+# CARGO_ENV += RUSTFLAGS="-Z force-unstable-if-unmarked -C link_args=-Wl,-rpath,\$$ORIGIN/../lib"
+
+CARGO_ENV += RUSTFLAGS="-L/usr/lib -Z force-unstable-if-unmarked -C target-feature=-crt-static"
 
 fn_opt_copy = (test -e "$2" && test ! "$1" -nt "$2") || cp "$1" "$2"
 
@@ -160,6 +166,8 @@ $(CARGO_HOME)config: Makefile
 $(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc $(MINICARGO) Makefile
 	@echo "[MINICARGO] $(RUST_SRC_LIBS)std > $(LIBDIR_S)"
 	mkdir -p $(LIBDIR_S)
+	cp /usr/lib/*.o /usr/lib/*.a $(LIBDIR_S)
+	cp /usr/lib/gcc/x86_64-linux-musl/13.1.0/*.o $(LIBDIR_S)
 ifneq ($(TARGETVER_LEAST_1_74),)
 	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)sysroot
 else
@@ -180,6 +188,8 @@ CARGO_OUTDIR_STAGE2_STD := $(OUTDIR)build-std2/$(RUSTC_TARGET)/release/
 CARGO_ENV_STAGE2_STD := CARGO_TARGET_DIR=$(OUTDIR)build-std2 RUSTC=$(abspath rustc_proxy.sh) PROXY_RUSTC=$(abspath $(BINDIR_2)rustc) PROXY_MRUSTC=$(abspath $(BINDIR_S)rustc) $(CARGO_ENV)
 $(LIBDIR_2)libtest.rlib: $(LIBDIR_S)libstd.rlib $(BINDIR_2)rustc $(BINDIR_S)rustc $(BINDIR)cargo $(CARGO_HOME)config Makefile
 	@mkdir -p $(LIBDIR_2)
+	cp /usr/lib/*.o /usr/lib/*.a $(LIBDIR_2)
+	cp /usr/lib/gcc/x86_64-linux-musl/13.1.0/*.o $(LIBDIR_2)
 	@echo [CARGO] $(RUST_SRC_LIBS)test/Cargo.toml '>' $(OUTDIR)build-std2
 ifneq ($(TARGETVER_LEAST_1_74),)
 	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)sysroot/Cargo.toml --features panic-unwind
@@ -217,6 +227,8 @@ else
 	@echo "[CP] libraries and results ($@)"
 endif
 	@mkdir -p $(LIBDIR)
+	cp /usr/lib/*.o /usr/lib/*.a $(LIBDIR)
+	cp /usr/lib/gcc/x86_64-linux-musl/13.1.0/*.o $(LIBDIR)
 	$Vcp $(LIBDIR_2)*.$(DYLIB_EXT) $(PREFIX)lib
 	$Vcp $(CARGO_OUTDIR_RUSTC)deps/*.rlib $(LIBDIR)
 	$Vcp $(CARGO_OUTDIR_RUSTC)deps/*.$(DYLIB_EXT) $(LIBDIR)
